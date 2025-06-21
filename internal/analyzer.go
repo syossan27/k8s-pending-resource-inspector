@@ -3,45 +3,78 @@ package internal
 import (
 	"context"
 	"fmt"
-	
+
 	"github.com/syossan27/k8s-pending-resource-inspector/pkg/types"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
+// Analyzer provides functionality to analyze pod schedulability and resource constraints
+// in a Kubernetes cluster. It uses a Fetcher to retrieve cluster information and
+// performs analysis to determine why pods might be pending.
 type Analyzer struct {
 	fetcher *Fetcher
 }
 
+// NewAnalyzer creates a new Analyzer instance with the provided Fetcher.
+// The Fetcher is used to retrieve node and pod information from the Kubernetes cluster.
+//
+// Parameters:
+//   - fetcher: A Fetcher instance for retrieving cluster resources
+//
+// Returns:
+//   - *Analyzer: A new Analyzer instance
 func NewAnalyzer(fetcher *Fetcher) *Analyzer {
 	return &Analyzer{
 		fetcher: fetcher,
 	}
 }
 
+// AnalyzePodSchedulability analyzes all pending pods in the specified namespace (or cluster-wide)
+// to determine their schedulability based on resource availability. It compares pod resource
+// requirements against node allocatable resources to identify scheduling constraints.
+//
+// Parameters:
+//   - ctx: Context for the operation, used for cancellation and timeout
+//   - namespace: Target namespace to analyze. If empty, analyzes cluster-wide
+//   - includeLimits: If true, uses resource limits instead of requests for analysis
+//
+// Returns:
+//   - []types.AnalysisResult: Analysis results for each pending pod, including schedulability status and suggestions
+//   - error: An error if fetching pods or nodes fails
 func (a *Analyzer) AnalyzePodSchedulability(ctx context.Context, namespace string, includeLimits bool) ([]types.AnalysisResult, error) {
 	pods, err := a.fetcher.FetchPendingPods(ctx, namespace)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch pending pods: %w", err)
 	}
-	
+
 	nodes, err := a.fetcher.FetchNodes(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch nodes: %w", err)
 	}
-	
+
 	var results []types.AnalysisResult
 	for _, pod := range pods {
 		result := a.analyzeSinglePod(pod, nodes, includeLimits)
 		results = append(results, result)
 	}
-	
+
 	return results, nil
 }
 
-// it analyzes resource limits instead of requests. Returns an AnalysisResult
+// analyzeSinglePod performs schedulability analysis for a single pod against available nodes.
+// It determines if the pod can be scheduled based on resource requirements and provides
+// detailed reasons and suggestions when scheduling is not possible.
+//
+// Parameters:
+//   - pod: The pod information to analyze
+//   - nodes: Available nodes in the cluster with their resource information
+//   - includeLimits: If true, uses resource limits instead of requests for comparison
+//
+// Returns:
+//   - types.AnalysisResult: Detailed analysis result including schedulability status, reasons, and suggestions
 func (a *Analyzer) analyzeSinglePod(pod types.PodInfo, nodes []types.NodeInfo, includeLimits bool) types.AnalysisResult {
 	maxAvailableCPU, maxAvailableMemory := a.findMaxAvailableResources(nodes)
-	
+
 	podCPU := pod.RequestsCPU
 	podMemory := pod.RequestsMemory
 	resourceType := "requests"
@@ -55,12 +88,12 @@ func (a *Analyzer) analyzeSinglePod(pod types.PodInfo, nodes []types.NodeInfo, i
 		}
 		resourceType = "limits"
 	}
-	
+
 	cpuFits := podCPU.Cmp(maxAvailableCPU) <= 0
 	memoryFits := podMemory.Cmp(maxAvailableMemory) <= 0
-	
+
 	isSchedulable := cpuFits && memoryFits
-	
+
 	var reason, suggestion string
 	if !isSchedulable {
 		if !cpuFits && !memoryFits {
@@ -81,7 +114,7 @@ func (a *Analyzer) analyzeSinglePod(pod types.PodInfo, nodes []types.NodeInfo, i
 				resourceType, maxAvailableMemory.String())
 		}
 	}
-	
+
 	return types.AnalysisResult{
 		Pod:                pod,
 		IsSchedulable:      isSchedulable,
@@ -92,9 +125,19 @@ func (a *Analyzer) analyzeSinglePod(pod types.PodInfo, nodes []types.NodeInfo, i
 	}
 }
 
+// findMaxAvailableResources finds the maximum CPU and memory resources available
+// across all nodes in the cluster. This represents the theoretical maximum resources
+// that a single pod could request and still be schedulable.
+//
+// Parameters:
+//   - nodes: Slice of node information containing allocatable resources
+//
+// Returns:
+//   - resource.Quantity: Maximum allocatable CPU across all nodes
+//   - resource.Quantity: Maximum allocatable memory across all nodes
 func (a *Analyzer) findMaxAvailableResources(nodes []types.NodeInfo) (resource.Quantity, resource.Quantity) {
 	var maxCPU, maxMemory resource.Quantity
-	
+
 	for _, node := range nodes {
 		if node.AllocatableCPU.Cmp(maxCPU) > 0 {
 			maxCPU = node.AllocatableCPU.DeepCopy()
@@ -103,10 +146,18 @@ func (a *Analyzer) findMaxAvailableResources(nodes []types.NodeInfo) (resource.Q
 			maxMemory = node.AllocatableMemory.DeepCopy()
 		}
 	}
-	
+
 	return maxCPU, maxMemory
 }
 
+// EvaluateResourceConstraints evaluates cluster-wide resource constraints and bottlenecks.
+// This method is currently a placeholder for future implementation of advanced constraint analysis.
+//
+// Parameters:
+//   - ctx: Context for the operation, used for cancellation and timeout
+//
+// Returns:
+//   - error: Currently always returns nil (not implemented)
 func (a *Analyzer) EvaluateResourceConstraints(ctx context.Context) error {
 	return nil
 }
