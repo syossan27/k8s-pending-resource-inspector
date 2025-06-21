@@ -72,9 +72,9 @@ func (r *Reporter) generateHumanReport(results []types.AnalysisResult) error {
 	fmt.Fprintf(r.writer, "Found %d pending pod(s) for analysis:\n\n", len(results))
 	for _, result := range results {
 		if result.IsSchedulable {
-			fmt.Fprintf(r.writer, "[✓] Pod: %s/%s - Schedulable\n", result.Pod.Namespace, result.Pod.Name)
+			fmt.Fprintf(r.writer, "[✓] Pod: %s - Schedulable\n", result.Pod.Name)
 		} else {
-			fmt.Fprintf(r.writer, "[✗] Pod: %s/%s\n", result.Pod.Namespace, result.Pod.Name)
+			fmt.Fprintf(r.writer, "[✗] Pod: %s\n", result.Pod.Name)
 			fmt.Fprintf(r.writer, "→ Reason: %s\n", result.Reason)
 			fmt.Fprintf(r.writer, "→ Suggested: %s\n", result.Suggestion)
 		}
