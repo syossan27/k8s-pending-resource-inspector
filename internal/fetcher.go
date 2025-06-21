@@ -13,6 +13,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+
 type Fetcher struct {
 	clientset kubernetes.Interface
 }
@@ -104,6 +105,7 @@ func (f *Fetcher) parsePodResources(pod corev1.Pod) types.PodInfo {
 			}
 			if memory := container.Resources.Requests.Memory(); memory != nil {
 				totalRequestsMemory.Add(*memory)
+
 			}
 		}
 		

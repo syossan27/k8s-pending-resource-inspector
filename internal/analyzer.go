@@ -18,7 +18,6 @@ func NewAnalyzer(fetcher *Fetcher) *Analyzer {
 	}
 }
 
-
 func (a *Analyzer) AnalyzePodSchedulability(ctx context.Context, namespace string, includeLimits bool) ([]types.AnalysisResult, error) {
 	pods, err := a.fetcher.FetchPendingPods(ctx, namespace)
 	if err != nil {
@@ -46,7 +45,6 @@ func (a *Analyzer) analyzeSinglePod(pod types.PodInfo, nodes []types.NodeInfo, i
 	podMemory := pod.RequestsMemory
 	resourceType := "requests"
 
-	
 	if includeLimits && (!pod.LimitsCPU.IsZero() || !pod.LimitsMemory.IsZero()) {
 		if !pod.LimitsCPU.IsZero() {
 			podCPU = pod.LimitsCPU
@@ -99,7 +97,6 @@ func (a *Analyzer) findMaxAvailableResources(nodes []types.NodeInfo) (resource.Q
 	for _, node := range nodes {
 		if node.AllocatableCPU.Cmp(maxCPU) > 0 {
 			maxCPU = node.AllocatableCPU.DeepCopy()
-
 		}
 		if node.AllocatableMemory.Cmp(maxMemory) > 0 {
 			maxMemory = node.AllocatableMemory.DeepCopy()
@@ -108,7 +105,6 @@ func (a *Analyzer) findMaxAvailableResources(nodes []types.NodeInfo) (resource.Q
 	
 	return maxCPU, maxMemory
 }
-
 
 func (a *Analyzer) EvaluateResourceConstraints(ctx context.Context) error {
 	return nil

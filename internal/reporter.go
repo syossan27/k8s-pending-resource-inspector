@@ -5,13 +5,19 @@ import (
 	"io"
 )
 
+// OutputFormat represents the supported output formats for analysis reports.
 type OutputFormat string
 
+// Supported output formats for analysis reports.
 const (
+	// OutputFormatHuman provides human-readable output with formatted text and colors.
 	OutputFormatHuman OutputFormat = "human"
+	// OutputFormatJSON provides machine-readable JSON output for automation and integration.
 	OutputFormatJSON  OutputFormat = "json"
+	// OutputFormatYAML provides YAML output format for configuration management workflows.
 	OutputFormatYAML  OutputFormat = "yaml"
 )
+
 
 type Reporter struct {
 	writer io.Writer
