@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/syossan27/k8s-pending-resource-inspector/pkg/types"
 	"gopkg.in/yaml.v3"
@@ -50,7 +51,7 @@ func NewReporter(writer io.Writer, format OutputFormat) *Reporter {
 }
 
 // GenerateReport generates and outputs a formatted report based on analysis results.
-func (r *Reporter) GenerateReport(ctx context.Context, results []types.AnalysisResult) error {
+func (r *Reporter) GenerateReport(ctx context.Context, results []types.AnalysisResult, clusterName string, totalNodes int) error {
 	if len(results) == 0 {
 		fmt.Fprintln(r.writer, "No pending pods found in the specified scope.")
 		return nil
@@ -60,9 +61,9 @@ func (r *Reporter) GenerateReport(ctx context.Context, results []types.AnalysisR
 	case OutputFormatHuman:
 		return r.generateHumanReport(results)
 	case OutputFormatJSON:
-		return r.generateJSONReport(results)
+		return r.generateJSONReport(results, clusterName, totalNodes)
 	case OutputFormatYAML:
-		return r.generateYAMLReport(results)
+		return r.generateYAMLReport(results, clusterName, totalNodes)
 	default:
 		return fmt.Errorf("unsupported output format: %s", r.format)
 	}
@@ -83,14 +84,16 @@ func (r *Reporter) generateHumanReport(results []types.AnalysisResult) error {
 	return nil
 }
 
-func (r *Reporter) generateJSONReport(results []types.AnalysisResult) error {
+func (r *Reporter) generateJSONReport(results []types.AnalysisResult, clusterName string, totalNodes int) error {
+	analysis := r.buildClusterAnalysis(results, clusterName, totalNodes)
 	encoder := json.NewEncoder(r.writer)
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(results)
+	return encoder.Encode(analysis)
 }
 
-func (r *Reporter) generateYAMLReport(results []types.AnalysisResult) error {
-	data, err := yaml.Marshal(results)
+func (r *Reporter) generateYAMLReport(results []types.AnalysisResult, clusterName string, totalNodes int) error {
+	analysis := r.buildClusterAnalysis(results, clusterName, totalNodes)
+	data, err := yaml.Marshal(analysis)
 	if err != nil {
 		return fmt.Errorf("failed to marshal YAML: %w", err)
 	}
@@ -102,6 +105,27 @@ func (r *Reporter) generateYAMLReport(results []types.AnalysisResult) error {
 func (r *Reporter) SendSlackNotification(ctx context.Context, webhookURL string, results []types.AnalysisResult) error {
 	fmt.Printf("Slack notification would be sent to: %s with %d results\n", webhookURL, len(results))
 	return nil
+}
+
+func (r *Reporter) buildClusterAnalysis(results []types.AnalysisResult, clusterName string, totalNodes int) types.ClusterAnalysis {
+	unschedulablePods := make([]types.AnalysisResult, 0)
+	for _, result := range results {
+		if !result.IsSchedulable {
+			unschedulablePods = append(unschedulablePods, result)
+		}
+	}
+
+	summary := fmt.Sprintf("Found %d pending pods, %d unschedulable due to resource constraints", 
+		len(results), len(unschedulablePods))
+
+	return types.ClusterAnalysis{
+		Timestamp:         time.Now(),
+		ClusterName:       clusterName,
+		TotalNodes:        totalNodes,
+		TotalPendingPods:  len(results),
+		UnschedulablePods: unschedulablePods,
+		Summary:           summary,
+	}
 }
 
 // SendPrometheusMetrics sends analysis results as metrics to a Prometheus Push Gateway.
