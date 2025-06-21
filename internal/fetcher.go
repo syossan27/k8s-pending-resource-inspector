@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/syossan27/k8s-pending-resource-inspector/pkg/types"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/kubernetes"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
@@ -63,6 +65,69 @@ func (f *Fetcher) FetchNodes(ctx context.Context) ([]types.NodeInfo, error) {
 	return nodeInfos, nil
 }
 
-func (f *Fetcher) FetchPendingPods(ctx context.Context, namespace string) error {
-	return nil
+func (f *Fetcher) FetchPendingPods(ctx context.Context, namespace string) ([]types.PodInfo, error) {
+	var listOptions metav1.ListOptions
+	listOptions.FieldSelector = "status.phase=Pending"
+	
+	var pods *corev1.PodList
+	var err error
+	
+	if namespace == "" {
+		pods, err = f.clientset.CoreV1().Pods("").List(ctx, listOptions)
+	} else {
+		pods, err = f.clientset.CoreV1().Pods(namespace).List(ctx, listOptions)
+	}
+	
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pending pods: %w", err)
+	}
+	
+	var podInfos []types.PodInfo
+	for _, pod := range pods.Items {
+		podInfo := f.parsePodResources(pod)
+		podInfos = append(podInfos, podInfo)
+	}
+	
+	return podInfos, nil
+}
+
+func (f *Fetcher) parsePodResources(pod corev1.Pod) types.PodInfo {
+	var totalRequestsCPU, totalRequestsMemory resource.Quantity
+	var totalLimitsCPU, totalLimitsMemory resource.Quantity
+	
+	for _, container := range pod.Spec.Containers {
+		if container.Resources.Requests != nil {
+			if cpu := container.Resources.Requests.Cpu(); cpu != nil {
+				totalRequestsCPU.Add(*cpu)
+			}
+			if memory := container.Resources.Requests.Memory(); memory != nil {
+				totalRequestsMemory.Add(*memory)
+			}
+		}
+		
+		if container.Resources.Limits != nil {
+			if cpu := container.Resources.Limits.Cpu(); cpu != nil {
+				totalLimitsCPU.Add(*cpu)
+			}
+			if memory := container.Resources.Limits.Memory(); memory != nil {
+				totalLimitsMemory.Add(*memory)
+			}
+		}
+	}
+	
+	var nodeAffinity *corev1.NodeAffinity
+	if pod.Spec.Affinity != nil {
+		nodeAffinity = pod.Spec.Affinity.NodeAffinity
+	}
+	
+	return types.PodInfo{
+		Name:           pod.Name,
+		Namespace:      pod.Namespace,
+		RequestsCPU:    totalRequestsCPU,
+		RequestsMemory: totalRequestsMemory,
+		LimitsCPU:      totalLimitsCPU,
+		LimitsMemory:   totalLimitsMemory,
+		NodeAffinity:   nodeAffinity,
+		Tolerations:    pod.Spec.Tolerations,
+	}
 }
