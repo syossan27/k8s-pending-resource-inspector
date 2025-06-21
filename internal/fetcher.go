@@ -65,6 +65,7 @@ func (f *Fetcher) FetchNodes(ctx context.Context) ([]types.NodeInfo, error) {
 	return nodeInfos, nil
 }
 
+
 func (f *Fetcher) FetchPendingPods(ctx context.Context, namespace string) ([]types.PodInfo, error) {
 	var listOptions metav1.ListOptions
 	listOptions.FieldSelector = "status.phase=Pending"
@@ -90,6 +91,7 @@ func (f *Fetcher) FetchPendingPods(ctx context.Context, namespace string) ([]typ
 	
 	return podInfos, nil
 }
+
 
 func (f *Fetcher) parsePodResources(pod corev1.Pod) types.PodInfo {
 	var totalRequestsCPU, totalRequestsMemory resource.Quantity
