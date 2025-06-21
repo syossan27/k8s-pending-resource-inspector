@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/syossan27/k8s-pending-resource-inspector/internal"
@@ -13,6 +14,7 @@ var (
 	namespace     string
 	includeLimits bool
 	outputFormat  string
+	alertSlack    string
 )
 
 var rootCmd = &cobra.Command{
@@ -20,7 +22,17 @@ var rootCmd = &cobra.Command{
 	Short: "A CLI tool to inspect Kubernetes Pods stuck in Pending state due to resource constraints",
 	Long: `k8s-pending-resource-inspector analyzes Kubernetes clusters to identify Pods that remain 
 in Pending state because their CPU or memory requests exceed the allocatable capacity 
-of all available nodes.`,
+of all available nodes.
+
+Examples:
+  # Analyze all namespaces
+  k8s-pending-resource-inspector
+
+  # Analyze specific namespace with JSON output
+  k8s-pending-resource-inspector --namespace my-app --output json
+
+  # Include limits and send Slack notification
+  k8s-pending-resource-inspector --include-limits --alert-slack https://hooks.slack.com/services/XXX`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runAnalysis()
 	},
@@ -30,9 +42,29 @@ func init() {
 	rootCmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Target namespace to analyze (empty for cluster-wide)")
 	rootCmd.Flags().BoolVar(&includeLimits, "include-limits", false, "Use resource limits instead of requests for analysis")
 	rootCmd.Flags().StringVarP(&outputFormat, "output", "o", "human", "Output format: human, json, yaml")
+	rootCmd.Flags().StringVar(&alertSlack, "alert-slack", "", "Slack webhook URL for notifications (optional)")
+}
+
+func validateFlags() error {
+	validFormats := map[string]bool{"human": true, "json": true, "yaml": true}
+	if !validFormats[outputFormat] {
+		return fmt.Errorf("unsupported output format: %s (supported: human, json, yaml)", outputFormat)
+	}
+	
+	if alertSlack != "" {
+		if !strings.HasPrefix(alertSlack, "https://hooks.slack.com/") {
+			return fmt.Errorf("invalid Slack webhook URL: must start with https://hooks.slack.com/")
+		}
+	}
+	
+	return nil
 }
 
 func runAnalysis() error {
+	if err := validateFlags(); err != nil {
+		return err
+	}
+	
 	ctx := context.Background()
 
 	fetcher, err := internal.NewFetcherFromConfig()
@@ -60,23 +92,15 @@ func runAnalysis() error {
 	}
 
 	reporter := internal.NewReporter(os.Stdout, format)
-	_ = reporter
-
-	if len(results) == 0 {
-		fmt.Println("No pending pods found in the specified scope.")
-		return nil
+	
+	if err := reporter.GenerateReport(ctx, results); err != nil {
+		return fmt.Errorf("failed to generate report: %w", err)
 	}
-
-	fmt.Printf("Found %d pending pod(s) for analysis:\n\n", len(results))
-	for _, result := range results {
-		if result.IsSchedulable {
-			fmt.Printf("[✓] Pod: %s/%s - Schedulable\n", result.Pod.Namespace, result.Pod.Name)
-		} else {
-			fmt.Printf("[✗] Pod: %s/%s\n", result.Pod.Namespace, result.Pod.Name)
-			fmt.Printf("→ Reason: %s\n", result.Reason)
-			fmt.Printf("→ Suggested: %s\n", result.Suggestion)
+	
+	if alertSlack != "" {
+		if err := reporter.SendSlackNotification(ctx, alertSlack, results); err != nil {
+			return fmt.Errorf("failed to send Slack notification: %w", err)
 		}
-		fmt.Println()
 	}
 
 	return nil
