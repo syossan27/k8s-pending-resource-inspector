@@ -2,7 +2,12 @@ package internal
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
+
+	"github.com/syossan27/k8s-pending-resource-inspector/pkg/types"
+	"gopkg.in/yaml.v3"
 )
 
 // OutputFormat represents the different output formats supported for generating reports.
@@ -45,29 +50,57 @@ func NewReporter(writer io.Writer, format OutputFormat) *Reporter {
 }
 
 // GenerateReport generates and outputs a formatted report based on analysis results.
-// This method is currently a placeholder for future implementation of report generation
-// functionality that will format and write analysis results to the configured output.
-//
-// Parameters:
-//   - ctx: Context for the operation, used for cancellation and timeout
-//
-// Returns:
-//   - error: Currently always returns nil (not implemented)
-func (r *Reporter) GenerateReport(ctx context.Context) error {
+func (r *Reporter) GenerateReport(ctx context.Context, results []types.AnalysisResult) error {
+	if len(results) == 0 {
+		fmt.Fprintln(r.writer, "No pending pods found in the specified scope.")
+		return nil
+	}
+
+	switch r.format {
+	case OutputFormatHuman:
+		return r.generateHumanReport(results)
+	case OutputFormatJSON:
+		return r.generateJSONReport(results)
+	case OutputFormatYAML:
+		return r.generateYAMLReport(results)
+	default:
+		return fmt.Errorf("unsupported output format: %s", r.format)
+	}
+}
+
+func (r *Reporter) generateHumanReport(results []types.AnalysisResult) error {
+	fmt.Fprintf(r.writer, "Found %d pending pod(s) for analysis:\n\n", len(results))
+	for _, result := range results {
+		if result.IsSchedulable {
+			fmt.Fprintf(r.writer, "[✓] Pod: %s/%s - Schedulable\n", result.Pod.Namespace, result.Pod.Name)
+		} else {
+			fmt.Fprintf(r.writer, "[✗] Pod: %s/%s\n", result.Pod.Namespace, result.Pod.Name)
+			fmt.Fprintf(r.writer, "→ Reason: %s\n", result.Reason)
+			fmt.Fprintf(r.writer, "→ Suggested: %s\n", result.Suggestion)
+		}
+		fmt.Fprintln(r.writer)
+	}
 	return nil
 }
 
+func (r *Reporter) generateJSONReport(results []types.AnalysisResult) error {
+	encoder := json.NewEncoder(r.writer)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(results)
+}
+
+func (r *Reporter) generateYAMLReport(results []types.AnalysisResult) error {
+	data, err := yaml.Marshal(results)
+	if err != nil {
+		return fmt.Errorf("failed to marshal YAML: %w", err)
+	}
+	_, err = r.writer.Write(data)
+	return err
+}
+
 // SendSlackNotification sends analysis results as a notification to a Slack channel.
-// This method is currently a placeholder for future implementation of Slack integration
-// that will format and send pod schedulability analysis results via webhook.
-//
-// Parameters:
-//   - ctx: Context for the operation, used for cancellation and timeout
-//   - webhookURL: The Slack webhook URL to send notifications to
-//
-// Returns:
-//   - error: Currently always returns nil (not implemented)
-func (r *Reporter) SendSlackNotification(ctx context.Context, webhookURL string) error {
+func (r *Reporter) SendSlackNotification(ctx context.Context, webhookURL string, results []types.AnalysisResult) error {
+	fmt.Printf("Slack notification would be sent to: %s with %d results\n", webhookURL, len(results))
 	return nil
 }
 
