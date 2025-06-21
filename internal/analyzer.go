@@ -8,22 +8,28 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
-// Analyzer provides functionality to analyze pod schedulability and resource constraints
-// in a Kubernetes cluster. It uses a Fetcher to retrieve cluster information and
-// performs analysis to determine why pods might be pending.
-type Analyzer struct {
-	fetcher *Fetcher
+// FetcherInterface defines the interface for fetching Kubernetes resources
+type FetcherInterface interface {
+	FetchNodes(ctx context.Context) ([]types.NodeInfo, error)
+	FetchPendingPods(ctx context.Context, namespace string) ([]types.PodInfo, error)
 }
 
-// NewAnalyzer creates a new Analyzer instance with the provided Fetcher.
-// The Fetcher is used to retrieve node and pod information from the Kubernetes cluster.
+// Analyzer provides functionality to analyze pod schedulability and resource constraints
+// in a Kubernetes cluster. It uses a FetcherInterface to retrieve cluster information and
+// performs analysis to determine why pods might be pending.
+type Analyzer struct {
+	fetcher FetcherInterface
+}
+
+// NewAnalyzer creates a new Analyzer instance with the provided FetcherInterface.
+// The FetcherInterface is used to retrieve node and pod information from the Kubernetes cluster.
 //
 // Parameters:
-//   - fetcher: A Fetcher instance for retrieving cluster resources
+//   - fetcher: A FetcherInterface instance for retrieving cluster resources
 //
 // Returns:
 //   - *Analyzer: A new Analyzer instance
-func NewAnalyzer(fetcher *Fetcher) *Analyzer {
+func NewAnalyzer(fetcher FetcherInterface) *Analyzer {
 	return &Analyzer{
 		fetcher: fetcher,
 	}
