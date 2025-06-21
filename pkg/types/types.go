@@ -9,41 +9,41 @@ import (
 
 
 type NodeInfo struct {
-	Name              string
-	AllocatableCPU    resource.Quantity
-	AllocatableMemory resource.Quantity
-	Taints            []corev1.Taint
-	Labels            map[string]string
+	Name              string            `json:"name" yaml:"name"`
+	AllocatableCPU    resource.Quantity `json:"allocatableCpu" yaml:"allocatableCpu"`
+	AllocatableMemory resource.Quantity `json:"allocatableMemory" yaml:"allocatableMemory"`
+	Taints            []corev1.Taint    `json:"taints,omitempty" yaml:"taints,omitempty"`
+	Labels            map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 }
 
 
 type PodInfo struct {
-	Name         string
-	Namespace    string
-	RequestsCPU  resource.Quantity
-	RequestsMemory resource.Quantity
-	LimitsCPU    resource.Quantity
-	LimitsMemory resource.Quantity
-	NodeAffinity *corev1.NodeAffinity
-	Tolerations  []corev1.Toleration
+	Name           string                `json:"name" yaml:"name"`
+	Namespace      string                `json:"namespace" yaml:"namespace"`
+	RequestsCPU    resource.Quantity     `json:"requestsCpu" yaml:"requestsCpu"`
+	RequestsMemory resource.Quantity     `json:"requestsMemory" yaml:"requestsMemory"`
+	LimitsCPU      resource.Quantity     `json:"limitsCpu,omitempty" yaml:"limitsCpu,omitempty"`
+	LimitsMemory   resource.Quantity     `json:"limitsMemory,omitempty" yaml:"limitsMemory,omitempty"`
+	NodeAffinity   *corev1.NodeAffinity  `json:"nodeAffinity,omitempty" yaml:"nodeAffinity,omitempty"`
+	Tolerations    []corev1.Toleration   `json:"tolerations,omitempty" yaml:"tolerations,omitempty"`
 }
 
 
 type AnalysisResult struct {
-	Pod                PodInfo
-	IsSchedulable      bool
-	Reason             string
-	Suggestion         string
-	MaxAvailableCPU    resource.Quantity
-	MaxAvailableMemory resource.Quantity
+	Pod                PodInfo           `json:"pod" yaml:"pod"`
+	IsSchedulable      bool              `json:"isSchedulable" yaml:"isSchedulable"`
+	Reason             string            `json:"reason,omitempty" yaml:"reason,omitempty"`
+	Suggestion         string            `json:"suggestion,omitempty" yaml:"suggestion,omitempty"`
+	MaxAvailableCPU    resource.Quantity `json:"maxAvailableCpu" yaml:"maxAvailableCpu"`
+	MaxAvailableMemory resource.Quantity `json:"maxAvailableMemory" yaml:"maxAvailableMemory"`
 }
 
 
 type ClusterAnalysis struct {
-	Timestamp        time.Time
-	ClusterName      string
-	TotalNodes       int
-	TotalPendingPods int
-	UnschedulablePods []AnalysisResult
-	Summary          string
+	Timestamp         time.Time        `json:"timestamp" yaml:"timestamp"`
+	ClusterName       string           `json:"clusterName" yaml:"clusterName"`
+	TotalNodes        int              `json:"totalNodes" yaml:"totalNodes"`
+	TotalPendingPods  int              `json:"totalPendingPods" yaml:"totalPendingPods"`
+	UnschedulablePods []AnalysisResult `json:"unschedulablePods" yaml:"unschedulablePods"`
+	Summary           string           `json:"summary" yaml:"summary"`
 }

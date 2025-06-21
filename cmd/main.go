@@ -79,6 +79,13 @@ func runAnalysis() error {
 		return fmt.Errorf("failed to analyze pod schedulability: %w", err)
 	}
 
+	nodes, err := fetcher.FetchNodes(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to fetch nodes for metadata: %w", err)
+	}
+
+	clusterName := "unknown"
+
 	var format internal.OutputFormat
 	switch outputFormat {
 	case "json":
@@ -93,7 +100,7 @@ func runAnalysis() error {
 
 	reporter := internal.NewReporter(os.Stdout, format)
 	
-	if err := reporter.GenerateReport(ctx, results); err != nil {
+	if err := reporter.GenerateReport(ctx, results, clusterName, len(nodes)); err != nil {
 		return fmt.Errorf("failed to generate report: %w", err)
 	}
 	
