@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/syossan27/k8s-pending-resource-inspector/pkg/types"
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -32,27 +34,16 @@ func TestJSONOutput(t *testing.T) {
 	}
 
 	err := reporter.GenerateReport(context.Background(), results, "test-cluster", 3)
-	if err != nil {
-		t.Fatalf("Failed to generate JSON report: %v", err)
-	}
+	require.NoError(t, err, "Failed to generate JSON report")
 
 	var analysis types.ClusterAnalysis
-	if err := json.Unmarshal(buf.Bytes(), &analysis); err != nil {
-		t.Fatalf("Generated output is not valid JSON: %v", err)
-	}
+	err = json.Unmarshal(buf.Bytes(), &analysis)
+	require.NoError(t, err, "Generated output is not valid JSON")
 
-	if analysis.ClusterName != "test-cluster" {
-		t.Errorf("Expected cluster name 'test-cluster', got '%s'", analysis.ClusterName)
-	}
-	if analysis.TotalNodes != 3 {
-		t.Errorf("Expected 3 total nodes, got %d", analysis.TotalNodes)
-	}
-	if analysis.TotalPendingPods != 1 {
-		t.Errorf("Expected 1 pending pod, got %d", analysis.TotalPendingPods)
-	}
-	if len(analysis.UnschedulablePods) != 1 {
-		t.Errorf("Expected 1 unschedulable pod, got %d", len(analysis.UnschedulablePods))
-	}
+	assert.Equal(t, "test-cluster", analysis.ClusterName)
+	assert.Equal(t, 3, analysis.TotalNodes)
+	assert.Equal(t, 1, analysis.TotalPendingPods)
+	assert.Len(t, analysis.UnschedulablePods, 1)
 }
 
 func TestYAMLOutput(t *testing.T) {
@@ -72,18 +63,13 @@ func TestYAMLOutput(t *testing.T) {
 	}
 
 	err := reporter.GenerateReport(context.Background(), results, "test-cluster", 2)
-	if err != nil {
-		t.Fatalf("Failed to generate YAML report: %v", err)
-	}
+	require.NoError(t, err, "Failed to generate YAML report")
 
 	var analysis types.ClusterAnalysis
-	if err := yaml.Unmarshal(buf.Bytes(), &analysis); err != nil {
-		t.Fatalf("Generated output is not valid YAML: %v", err)
-	}
+	err = yaml.Unmarshal(buf.Bytes(), &analysis)
+	require.NoError(t, err, "Generated output is not valid YAML")
 
-	if analysis.ClusterName != "test-cluster" {
-		t.Errorf("Expected cluster name 'test-cluster', got '%s'", analysis.ClusterName)
-	}
+	assert.Equal(t, "test-cluster", analysis.ClusterName)
 }
 
 func TestEmptyResults(t *testing.T) {
@@ -98,7 +84,136 @@ func TestEmptyResults(t *testing.T) {
 	}
 
 	output := buf.String()
-	if output != "No pending pods found in the specified scope.\n" {
-		t.Errorf("Expected empty results message, got: %s", output)
+	assert.Equal(t, "No pending pods found in the specified scope.\n", output)
+}
+
+func TestNewReporter(t *testing.T) {
+	var buf bytes.Buffer
+	reporter := NewReporter(&buf, OutputFormatJSON)
+	
+	assert.NotNil(t, reporter)
+	assert.Equal(t, &buf, reporter.writer)
+	assert.Equal(t, OutputFormatJSON, reporter.format)
+}
+
+func TestGenerateHumanReport(t *testing.T) {
+	var buf bytes.Buffer
+	reporter := NewReporter(&buf, OutputFormatHuman)
+
+	results := []types.AnalysisResult{
+		{
+			Pod: types.PodInfo{
+				Name:      "schedulable-pod",
+				Namespace: "default",
+			},
+			IsSchedulable: true,
+		},
+		{
+			Pod: types.PodInfo{
+				Name:      "unschedulable-pod",
+				Namespace: "default",
+			},
+			IsSchedulable: false,
+			Reason:        "Insufficient CPU",
+			Suggestion:    "Add more nodes",
+		},
 	}
+
+	err := reporter.GenerateReport(context.Background(), results, "test-cluster", 2)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "Found 2 pending pod(s) for analysis:")
+	assert.Contains(t, output, "[✓] Pod: schedulable-pod - Schedulable")
+	assert.Contains(t, output, "[✗] Pod: unschedulable-pod")
+	assert.Contains(t, output, "→ Reason: Insufficient CPU")
+	assert.Contains(t, output, "→ Suggested: Add more nodes")
+}
+
+func TestGenerateReport_UnsupportedFormat(t *testing.T) {
+	var buf bytes.Buffer
+	reporter := NewReporter(&buf, OutputFormat("unsupported"))
+
+	results := []types.AnalysisResult{
+		{
+			Pod: types.PodInfo{
+				Name:      "test-pod",
+				Namespace: "default",
+			},
+			IsSchedulable: true,
+		},
+	}
+
+	err := reporter.GenerateReport(context.Background(), results, "test-cluster", 1)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported output format: unsupported")
+}
+
+func TestSendSlackNotification(t *testing.T) {
+	var buf bytes.Buffer
+	reporter := NewReporter(&buf, OutputFormatJSON)
+
+	results := []types.AnalysisResult{
+		{
+			Pod: types.PodInfo{
+				Name:      "test-pod",
+				Namespace: "default",
+			},
+			IsSchedulable: false,
+		},
+	}
+
+	err := reporter.SendSlackNotification(context.Background(), "https://hooks.slack.com/test", results)
+	assert.NoError(t, err)
+}
+
+func TestSendPrometheusMetrics(t *testing.T) {
+	var buf bytes.Buffer
+	reporter := NewReporter(&buf, OutputFormatJSON)
+
+	err := reporter.SendPrometheusMetrics(context.Background(), "http://prometheus:9091")
+	assert.NoError(t, err)
+}
+
+func TestBuildClusterAnalysis(t *testing.T) {
+	var buf bytes.Buffer
+	reporter := NewReporter(&buf, OutputFormatJSON)
+
+	results := []types.AnalysisResult{
+		{
+			Pod: types.PodInfo{
+				Name:      "schedulable-pod",
+				Namespace: "default",
+			},
+			IsSchedulable: true,
+		},
+		{
+			Pod: types.PodInfo{
+				Name:      "unschedulable-pod-1",
+				Namespace: "default",
+			},
+			IsSchedulable: false,
+			Reason:        "Insufficient CPU",
+		},
+		{
+			Pod: types.PodInfo{
+				Name:      "unschedulable-pod-2",
+				Namespace: "test",
+			},
+			IsSchedulable: false,
+			Reason:        "Insufficient Memory",
+		},
+	}
+
+	analysis := reporter.buildClusterAnalysis(results, "test-cluster", 5)
+
+	assert.Equal(t, "test-cluster", analysis.ClusterName)
+	assert.Equal(t, 5, analysis.TotalNodes)
+	assert.Equal(t, 3, analysis.TotalPendingPods)
+	assert.Len(t, analysis.UnschedulablePods, 2)
+	assert.Equal(t, "Found 3 pending pods, 2 unschedulable due to resource constraints", analysis.Summary)
+	assert.NotZero(t, analysis.Timestamp)
+
+	assert.Equal(t, "unschedulable-pod-1", analysis.UnschedulablePods[0].Pod.Name)
+	assert.Equal(t, "unschedulable-pod-2", analysis.UnschedulablePods[1].Pod.Name)
 }
