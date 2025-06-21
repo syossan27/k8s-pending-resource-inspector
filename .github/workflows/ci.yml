@@ -45,6 +45,9 @@ jobs:
     - name: Run tests
       run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
     
+    - name: Run integration tests
+      run: go test -v -tags=integration ./test/integration/...
+    
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:
