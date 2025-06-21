@@ -38,6 +38,7 @@ func (a *Analyzer) AnalyzePodSchedulability(ctx context.Context, namespace strin
 	return results, nil
 }
 
+// it analyzes resource limits instead of requests. Returns an AnalysisResult
 func (a *Analyzer) analyzeSinglePod(pod types.PodInfo, nodes []types.NodeInfo, includeLimits bool) types.AnalysisResult {
 	maxAvailableCPU, maxAvailableMemory := a.findMaxAvailableResources(nodes)
 	

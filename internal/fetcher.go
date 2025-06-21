@@ -14,15 +14,18 @@ import (
 )
 
 
+
 type Fetcher struct {
 	clientset kubernetes.Interface
 }
+
 
 func NewFetcher(clientset kubernetes.Interface) *Fetcher {
 	return &Fetcher{
 		clientset: clientset,
 	}
 }
+
 
 func NewFetcherFromConfig() (*Fetcher, error) {
 	var config *rest.Config
@@ -45,6 +48,7 @@ func NewFetcherFromConfig() (*Fetcher, error) {
 	return NewFetcher(clientset), nil
 }
 
+
 func (f *Fetcher) FetchNodes(ctx context.Context) ([]types.NodeInfo, error) {
 	nodes, err := f.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -65,6 +69,7 @@ func (f *Fetcher) FetchNodes(ctx context.Context) ([]types.NodeInfo, error) {
 
 	return nodeInfos, nil
 }
+
 
 
 func (f *Fetcher) FetchPendingPods(ctx context.Context, namespace string) ([]types.PodInfo, error) {
@@ -92,6 +97,7 @@ func (f *Fetcher) FetchPendingPods(ctx context.Context, namespace string) ([]typ
 	
 	return podInfos, nil
 }
+
 
 
 func (f *Fetcher) parsePodResources(pod corev1.Pod) types.PodInfo {

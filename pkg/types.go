@@ -7,6 +7,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
+
 type NodeInfo struct {
 	Name              string
 	AllocatableCPU    resource.Quantity
@@ -14,6 +15,7 @@ type NodeInfo struct {
 	Taints            []corev1.Taint
 	Labels            map[string]string
 }
+
 
 type PodInfo struct {
 	Name         string
@@ -26,6 +28,7 @@ type PodInfo struct {
 	Tolerations  []corev1.Toleration
 }
 
+
 type AnalysisResult struct {
 	Pod                PodInfo
 	IsSchedulable      bool
@@ -34,6 +37,7 @@ type AnalysisResult struct {
 	MaxAvailableCPU    resource.Quantity
 	MaxAvailableMemory resource.Quantity
 }
+
 
 type ClusterAnalysis struct {
 	Timestamp        time.Time
