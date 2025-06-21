@@ -27,9 +27,10 @@ func NewFetcherFromConfig() (*Fetcher, error) {
 
 	config, err = rest.InClusterConfig()
 	if err != nil {
+		inClusterErr := err // Preserve the error from InClusterConfig
 		config, err = clientcmd.BuildConfigFromFlags("", clientcmd.RecommendedHomeFile)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create kubernetes config: %w", err)
+			return nil, fmt.Errorf("failed to create kubernetes config: in-cluster error: %v, fallback error: %w", inClusterErr, err)
 		}
 	}
 
