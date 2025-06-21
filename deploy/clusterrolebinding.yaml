@@ -1,0 +1,14 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k8s-pending-resource-inspector
+  labels:
+    app: k8s-pending-resource-inspector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: k8s-pending-resource-inspector
+subjects:
+- kind: ServiceAccount
+  name: k8s-pending-resource-inspector
+  namespace: kube-system
