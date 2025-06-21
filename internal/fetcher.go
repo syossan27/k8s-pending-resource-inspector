@@ -50,7 +50,8 @@ func NewFetcherFromConfig() (*Fetcher, error) {
 		inClusterErr := err // Preserve the error from InClusterConfig
 		config, err = clientcmd.BuildConfigFromFlags("", clientcmd.RecommendedHomeFile)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create kubernetes config: in-cluster error: %v, fallback error: %w", inClusterErr, err)
+			return nil, fmt.Errorf("failed to create kubernetes config: in-cluster error: %v, fallback error: %w",
+				inClusterErr, err)
 		}
 	}
 
@@ -78,7 +79,7 @@ func (f *Fetcher) FetchNodes(ctx context.Context) ([]types.NodeInfo, error) {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
 
-	var nodeInfos []types.NodeInfo
+	nodeInfos := make([]types.NodeInfo, 0, len(nodes.Items))
 	for _, node := range nodes.Items {
 		nodeInfo := types.NodeInfo{
 			Name:              node.Name,
@@ -121,7 +122,7 @@ func (f *Fetcher) FetchPendingPods(ctx context.Context, namespace string) ([]typ
 		return nil, fmt.Errorf("failed to list pending pods: %w", err)
 	}
 
-	var podInfos []types.PodInfo
+	podInfos := make([]types.PodInfo, 0, len(pods.Items))
 	for _, pod := range pods.Items {
 		podInfo := f.parsePodResources(pod)
 		podInfos = append(podInfos, podInfo)
@@ -150,7 +151,6 @@ func (f *Fetcher) parsePodResources(pod corev1.Pod) types.PodInfo {
 			}
 			if memory := container.Resources.Requests.Memory(); memory != nil {
 				totalRequestsMemory.Add(*memory)
-
 			}
 		}
 
