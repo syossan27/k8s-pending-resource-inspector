@@ -52,7 +52,7 @@ func (a *Analyzer) AnalyzePodSchedulability(ctx context.Context, namespace strin
 		return nil, fmt.Errorf("failed to fetch nodes: %w", err)
 	}
 
-	var results []types.AnalysisResult
+	results := make([]types.AnalysisResult, 0, len(pods))
 	for _, pod := range pods {
 		result := a.analyzeSinglePod(pod, nodes, includeLimits)
 		results = append(results, result)
@@ -96,18 +96,19 @@ func (a *Analyzer) analyzeSinglePod(pod types.PodInfo, nodes []types.NodeInfo, i
 
 	var reason, suggestion string
 	if !isSchedulable {
-		if !cpuFits && !memoryFits {
+		switch {
+		case !cpuFits && !memoryFits:
 			reason = fmt.Sprintf("%s.cpu = %s and %s.memory = %s exceed all node allocatable resources (max CPU: %s, max memory: %s)",
 				resourceType, podCPU.String(), resourceType, podMemory.String(),
 				maxAvailableCPU.String(), maxAvailableMemory.String())
 			suggestion = fmt.Sprintf("Lower %s.cpu to <= %s and %s.memory to <= %s, or add nodes with higher capacity",
 				resourceType, maxAvailableCPU.String(), resourceType, maxAvailableMemory.String())
-		} else if !cpuFits {
+		case !cpuFits:
 			reason = fmt.Sprintf("%s.cpu = %s exceeds all node allocatable.cpu (max: %s)",
 				resourceType, podCPU.String(), maxAvailableCPU.String())
 			suggestion = fmt.Sprintf("Lower %s.cpu to <= %s or add higher-CPU node",
 				resourceType, maxAvailableCPU.String())
-		} else {
+		default:
 			reason = fmt.Sprintf("%s.memory = %s exceeds all node allocatable.memory (max: %s)",
 				resourceType, podMemory.String(), maxAvailableMemory.String())
 			suggestion = fmt.Sprintf("Lower %s.memory to <= %s or add higher-memory node",
