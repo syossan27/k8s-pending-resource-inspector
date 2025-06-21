@@ -59,6 +59,57 @@ go build -o k8s-pending-resource-inspector ./cmd
 - Kubernetes cluster access with appropriate RBAC permissions
 - Read access to Pods and Nodes resources
 
+## RBAC Setup
+
+This tool requires minimal read-only permissions to function properly. The required RBAC configuration is provided in the `deploy/` directory.
+
+### Quick Setup
+
+Apply the RBAC manifests to your cluster:
+
+```bash
+kubectl apply -f deploy/
+```
+
+This will create:
+- **ClusterRole**: `k8s-pending-resource-inspector` with read-only access to nodes and pods
+- **ServiceAccount**: `k8s-pending-resource-inspector` in the `kube-system` namespace  
+- **ClusterRoleBinding**: Associates the ServiceAccount with the ClusterRole
+
+### Using with ServiceAccount
+
+When running the tool inside a Kubernetes cluster, configure your Pod to use the ServiceAccount:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: k8s-pending-resource-inspector
+  namespace: kube-system
+spec:
+  serviceAccountName: k8s-pending-resource-inspector
+  containers:
+  - name: inspector
+    image: your-registry/k8s-pending-resource-inspector:latest
+    command: ["./k8s-pending-resource-inspector"]
+```
+
+### Manual Setup
+
+If you prefer to apply manifests individually:
+
+```bash
+kubectl apply -f deploy/serviceaccount.yaml
+kubectl apply -f deploy/clusterrole.yaml
+kubectl apply -f deploy/clusterrolebinding.yaml
+```
+
+### Required Permissions
+
+The tool requires the following minimal permissions:
+- `nodes`: `get`, `list`, `watch` - To fetch node allocatable resources
+- `pods`: `get`, `list`, `watch` - To identify pending pods and their resource requirements
+
 ## Development
 
 This project follows a modular architecture:
