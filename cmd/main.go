@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/syossan27/k8s-pending-resource-inspector/internal"
 )
@@ -15,6 +16,8 @@ var (
 	includeLimits bool
 	outputFormat  string
 	alertSlack    string
+	logLevel      string
+	logFormat     string
 )
 
 var rootCmd = &cobra.Command{
@@ -43,6 +46,8 @@ func init() {
 	rootCmd.Flags().BoolVar(&includeLimits, "include-limits", false, "Use resource limits instead of requests for analysis")
 	rootCmd.Flags().StringVarP(&outputFormat, "output", "o", "human", "Output format: human, json, yaml")
 	rootCmd.Flags().StringVar(&alertSlack, "alert-slack", "", "Slack webhook URL for notifications (optional)")
+	rootCmd.Flags().StringVar(&logLevel, "log-level", "info", "Log level: debug, info, warn, error")
+	rootCmd.Flags().StringVar(&logFormat, "log-format", "text", "Log format: text, json")
 }
 
 func validateFlags() error {
@@ -50,13 +55,44 @@ func validateFlags() error {
 	if !validFormats[outputFormat] {
 		return fmt.Errorf("unsupported output format: %s (supported: human, json, yaml)", outputFormat)
 	}
-	
+
 	if alertSlack != "" {
 		if !strings.HasPrefix(alertSlack, "https://hooks.slack.com/") {
 			return fmt.Errorf("invalid Slack webhook URL: must start with https://hooks.slack.com/")
 		}
 	}
-	
+
+	validLogLevels := map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
+	if !validLogLevels[logLevel] {
+		return fmt.Errorf("unsupported log level: %s (supported: debug, info, warn, error)", logLevel)
+	}
+
+	validLogFormats := map[string]bool{"text": true, "json": true}
+	if !validLogFormats[logFormat] {
+		return fmt.Errorf("unsupported log format: %s (supported: text, json)", logFormat)
+	}
+
+	return nil
+}
+
+func setupLogging() error {
+	level, err := logrus.ParseLevel(logLevel)
+	if err != nil {
+		return fmt.Errorf("invalid log level: %w", err)
+	}
+	logrus.SetLevel(level)
+
+	if logFormat == "json" {
+		logrus.SetFormatter(&logrus.JSONFormatter{
+			TimestampFormat: "2006-01-02T15:04:05.000Z07:00",
+		})
+	} else {
+		logrus.SetFormatter(&logrus.TextFormatter{
+			FullTimestamp:   true,
+			TimestampFormat: "2006-01-02T15:04:05.000Z07:00",
+		})
+	}
+
 	return nil
 }
 
@@ -64,25 +100,46 @@ func runAnalysis() error {
 	if err := validateFlags(); err != nil {
 		return err
 	}
-	
+
+	if err := setupLogging(); err != nil {
+		return err
+	}
+
 	ctx := context.Background()
+
+	logrus.Info("Starting k8s-pending-resource-inspector analysis")
+
+	if namespace != "" {
+		logrus.WithField("namespace", namespace).Info("Analyzing specific namespace")
+	} else {
+		logrus.Info("Analyzing cluster-wide")
+	}
 
 	fetcher, err := internal.NewFetcherFromConfig()
 	if err != nil {
+		logrus.WithError(err).Error("Failed to create Kubernetes client")
 		return fmt.Errorf("failed to create Kubernetes client: %w", err)
 	}
+
+	logrus.Debug("Successfully created Kubernetes client")
 
 	analyzer := internal.NewAnalyzer(fetcher)
 
 	results, err := analyzer.AnalyzePodSchedulability(ctx, namespace, includeLimits)
 	if err != nil {
+		logrus.WithError(err).Error("Failed to analyze pod schedulability")
 		return fmt.Errorf("failed to analyze pod schedulability: %w", err)
 	}
 
+	logrus.WithField("pending_pods_count", len(results)).Info("Pod schedulability analysis completed")
+
 	nodes, err := fetcher.FetchNodes(ctx)
 	if err != nil {
+		logrus.WithError(err).Error("Failed to fetch nodes for metadata")
 		return fmt.Errorf("failed to fetch nodes for metadata: %w", err)
 	}
+
+	logrus.WithField("nodes_count", len(nodes)).Debug("Fetched cluster nodes for metadata")
 
 	clusterName := "unknown"
 
@@ -95,21 +152,27 @@ func runAnalysis() error {
 	case "human":
 		format = internal.OutputFormatHuman
 	default:
+		logrus.WithField("format", outputFormat).Error("Unsupported output format")
 		return fmt.Errorf("unsupported output format: %s", outputFormat)
 	}
 
 	reporter := internal.NewReporter(os.Stdout, format)
-	
+
+	logrus.WithField("format", outputFormat).Info("Generating report")
 	if err := reporter.GenerateReport(ctx, results, clusterName, len(nodes)); err != nil {
+		logrus.WithError(err).Error("Failed to generate report")
 		return fmt.Errorf("failed to generate report: %w", err)
 	}
-	
+
 	if alertSlack != "" {
+		logrus.WithField("webhook_url", alertSlack).Info("Sending Slack notification")
 		if err := reporter.SendSlackNotification(ctx, alertSlack, results); err != nil {
+			logrus.WithError(err).Error("Failed to send Slack notification")
 			return fmt.Errorf("failed to send Slack notification: %w", err)
 		}
 	}
 
+	logrus.Info("Analysis completed successfully")
 	return nil
 }
 

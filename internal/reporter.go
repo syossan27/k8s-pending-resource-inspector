@@ -7,6 +7,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/syossan27/k8s-pending-resource-inspector/pkg/types"
 	"gopkg.in/yaml.v3"
 )
@@ -52,19 +53,31 @@ func NewReporter(writer io.Writer, format OutputFormat) *Reporter {
 
 // GenerateReport generates and outputs a formatted report based on analysis results.
 func (r *Reporter) GenerateReport(ctx context.Context, results []types.AnalysisResult, clusterName string, totalNodes int) error {
+	logrus.WithFields(logrus.Fields{
+		"results_count": len(results),
+		"cluster_name":  clusterName,
+		"total_nodes":   totalNodes,
+		"format":        r.format,
+	}).Info("Generating analysis report")
+
 	if len(results) == 0 {
+		logrus.Info("No pending pods found in the specified scope")
 		fmt.Fprintln(r.writer, "No pending pods found in the specified scope.")
 		return nil
 	}
 
 	switch r.format {
 	case OutputFormatHuman:
+		logrus.Debug("Generating human-readable report")
 		return r.generateHumanReport(results)
 	case OutputFormatJSON:
+		logrus.Debug("Generating JSON report")
 		return r.generateJSONReport(results, clusterName, totalNodes)
 	case OutputFormatYAML:
+		logrus.Debug("Generating YAML report")
 		return r.generateYAMLReport(results, clusterName, totalNodes)
 	default:
+		logrus.WithField("format", r.format).Error("Unsupported output format")
 		return fmt.Errorf("unsupported output format: %s", r.format)
 	}
 }
@@ -88,22 +101,49 @@ func (r *Reporter) generateJSONReport(results []types.AnalysisResult, clusterNam
 	analysis := r.buildClusterAnalysis(results, clusterName, totalNodes)
 	encoder := json.NewEncoder(r.writer)
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(analysis)
+	err := encoder.Encode(analysis)
+	if err != nil {
+		logrus.WithError(err).Error("Failed to encode JSON report")
+		return err
+	}
+	logrus.Debug("Successfully generated JSON report")
+	return nil
 }
 
 func (r *Reporter) generateYAMLReport(results []types.AnalysisResult, clusterName string, totalNodes int) error {
 	analysis := r.buildClusterAnalysis(results, clusterName, totalNodes)
 	data, err := yaml.Marshal(analysis)
 	if err != nil {
+		logrus.WithError(err).Error("Failed to marshal YAML report")
 		return fmt.Errorf("failed to marshal YAML: %w", err)
 	}
 	_, err = r.writer.Write(data)
-	return err
+	if err != nil {
+		logrus.WithError(err).Error("Failed to write YAML report")
+		return err
+	}
+	logrus.Debug("Successfully generated YAML report")
+	return nil
 }
 
 // SendSlackNotification sends analysis results as a notification to a Slack channel.
 func (r *Reporter) SendSlackNotification(ctx context.Context, webhookURL string, results []types.AnalysisResult) error {
-	fmt.Printf("Slack notification would be sent to: %s with %d results\n", webhookURL, len(results))
+	unschedulableCount := 0
+	for _, result := range results {
+		if !result.IsSchedulable {
+			unschedulableCount++
+		}
+	}
+
+	logrus.WithFields(logrus.Fields{
+		"webhook_url":        webhookURL,
+		"total_results":      len(results),
+		"unschedulable_pods": unschedulableCount,
+	}).Info("Sending Slack notification")
+
+	logrus.Debug("Slack notification feature is currently a placeholder implementation")
+	fmt.Printf("Slack notification would be sent to: %s with %d results (%d unschedulable)\n",
+		webhookURL, len(results), unschedulableCount)
 	return nil
 }
 
@@ -115,7 +155,7 @@ func (r *Reporter) buildClusterAnalysis(results []types.AnalysisResult, clusterN
 		}
 	}
 
-	summary := fmt.Sprintf("Found %d pending pods, %d unschedulable due to resource constraints", 
+	summary := fmt.Sprintf("Found %d pending pods, %d unschedulable due to resource constraints",
 		len(results), len(unschedulablePods))
 
 	return types.ClusterAnalysis{
