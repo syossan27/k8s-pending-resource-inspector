@@ -96,6 +96,16 @@ func setupLogging() error {
 	return nil
 }
 
+func redactWebhookURL(webhookURL string) string {
+	if webhookURL == "" {
+		return ""
+	}
+	if lastSlash := strings.LastIndex(webhookURL, "/"); lastSlash != -1 && lastSlash < len(webhookURL)-1 {
+		return webhookURL[:lastSlash+1] + "***"
+	}
+	return "***"
+}
+
 func runAnalysis() error {
 	if err := validateFlags(); err != nil {
 		return err
@@ -165,7 +175,7 @@ func runAnalysis() error {
 	}
 
 	if alertSlack != "" {
-		logrus.WithField("webhook_url", alertSlack).Info("Sending Slack notification")
+		logrus.WithField("webhook_url", redactWebhookURL(alertSlack)).Info("Sending Slack notification")
 		if err := reporter.SendSlackNotification(ctx, alertSlack, results); err != nil {
 			logrus.WithError(err).Error("Failed to send Slack notification")
 			return fmt.Errorf("failed to send Slack notification: %w", err)
