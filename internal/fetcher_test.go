@@ -13,12 +13,10 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 )
 
-
-
 func TestNewFetcher(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
 	fetcher := NewFetcher(clientset)
-	
+
 	assert.NotNil(t, fetcher)
 	assert.Equal(t, clientset, fetcher.clientset)
 }
@@ -46,7 +44,7 @@ func TestFetchNodes_Success(t *testing.T) {
 			},
 		},
 	}
-	
+
 	node2 := &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "node2",
@@ -61,22 +59,22 @@ func TestFetchNodes_Success(t *testing.T) {
 			},
 		},
 	}
-	
+
 	clientset := fake.NewSimpleClientset(node1, node2)
 	fetcher := NewFetcher(clientset)
 	ctx := context.Background()
-	
+
 	nodes, err := fetcher.FetchNodes(ctx)
-	
+
 	require.NoError(t, err)
 	assert.Len(t, nodes, 2)
-	
+
 	assert.Equal(t, "node1", nodes[0].Name)
 	assert.True(t, resource.MustParse("2").Equal(nodes[0].AllocatableCPU))
 	assert.True(t, resource.MustParse("4Gi").Equal(nodes[0].AllocatableMemory))
 	assert.Len(t, nodes[0].Taints, 1)
 	assert.Equal(t, "node-role.kubernetes.io/master", nodes[0].Taints[0].Key)
-	
+
 	assert.Equal(t, "node2", nodes[1].Name)
 	assert.True(t, resource.MustParse("4").Equal(nodes[1].AllocatableCPU))
 	assert.True(t, resource.MustParse("8Gi").Equal(nodes[1].AllocatableMemory))
@@ -134,16 +132,16 @@ func TestFetchPendingPods_ClusterWide(t *testing.T) {
 			},
 		},
 	}
-	
+
 	clientset := fake.NewSimpleClientset(pod)
 	fetcher := NewFetcher(clientset)
 	ctx := context.Background()
-	
+
 	pods, err := fetcher.FetchPendingPods(ctx, "")
-	
+
 	require.NoError(t, err)
 	assert.Len(t, pods, 1)
-	
+
 	podInfo := pods[0]
 	assert.Equal(t, "pending-pod-1", podInfo.Name)
 	assert.Equal(t, "default", podInfo.Namespace)
@@ -178,16 +176,16 @@ func TestFetchPendingPods_SpecificNamespace(t *testing.T) {
 			},
 		},
 	}
-	
+
 	clientset := fake.NewSimpleClientset(pod)
 	fetcher := NewFetcher(clientset)
 	ctx := context.Background()
-	
+
 	pods, err := fetcher.FetchPendingPods(ctx, "my-namespace")
-	
+
 	require.NoError(t, err)
 	assert.Len(t, pods, 1)
-	
+
 	podInfo := pods[0]
 	assert.Equal(t, "pending-pod-2", podInfo.Name)
 	assert.Equal(t, "my-namespace", podInfo.Namespace)
@@ -290,13 +288,13 @@ func TestParsePodResources(t *testing.T) {
 			},
 		},
 	}
-	
+
 	fetcher := NewFetcher(fake.NewSimpleClientset())
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := fetcher.parsePodResources(tt.pod)
-			
+
 			assert.Equal(t, tt.expected.Name, result.Name)
 			assert.Equal(t, tt.expected.Namespace, result.Namespace)
 			assert.True(t, tt.expected.RequestsCPU.Equal(result.RequestsCPU))

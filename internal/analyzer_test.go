@@ -29,14 +29,14 @@ func (m *MockFetcher) FetchPendingPods(ctx context.Context, namespace string) ([
 func TestNewAnalyzer(t *testing.T) {
 	mockFetcher := &MockFetcher{}
 	analyzer := NewAnalyzer(mockFetcher)
-	
+
 	assert.NotNil(t, analyzer)
 	assert.Equal(t, mockFetcher, analyzer.fetcher)
 }
 
 func TestAnalyzePodSchedulability_Success(t *testing.T) {
 	mockFetcher := &MockFetcher{}
-	
+
 	pods := []types.PodInfo{
 		{
 			Name:           "test-pod",
@@ -45,7 +45,7 @@ func TestAnalyzePodSchedulability_Success(t *testing.T) {
 			RequestsMemory: resource.MustParse("128Mi"),
 		},
 	}
-	
+
 	nodes := []types.NodeInfo{
 		{
 			Name:              "node1",
@@ -53,48 +53,48 @@ func TestAnalyzePodSchedulability_Success(t *testing.T) {
 			AllocatableMemory: resource.MustParse("4Gi"),
 		},
 	}
-	
+
 	mockFetcher.On("FetchPendingPods", mock.Anything, "default").Return(pods, nil)
 	mockFetcher.On("FetchNodes", mock.Anything).Return(nodes, nil)
-	
+
 	analyzer := NewAnalyzer(mockFetcher)
 	ctx := context.Background()
-	
+
 	results, err := analyzer.AnalyzePodSchedulability(ctx, "default", false)
-	
+
 	require.NoError(t, err)
 	assert.Len(t, results, 1)
-	
+
 	result := results[0]
 	assert.Equal(t, "test-pod", result.Pod.Name)
 	assert.True(t, result.IsSchedulable)
 	assert.Empty(t, result.Reason)
 	assert.Empty(t, result.Suggestion)
-	
+
 	mockFetcher.AssertExpectations(t)
 }
 
 func TestAnalyzePodSchedulability_FetchPodsError(t *testing.T) {
 	mockFetcher := &MockFetcher{}
-	
+
 	expectedError := errors.New("failed to fetch pods")
 	mockFetcher.On("FetchPendingPods", mock.Anything, "default").Return([]types.PodInfo(nil), expectedError)
-	
+
 	analyzer := NewAnalyzer(mockFetcher)
 	ctx := context.Background()
-	
+
 	results, err := analyzer.AnalyzePodSchedulability(ctx, "default", false)
-	
+
 	assert.Error(t, err)
 	assert.Nil(t, results)
 	assert.Contains(t, err.Error(), "failed to fetch pending pods")
-	
+
 	mockFetcher.AssertExpectations(t)
 }
 
 func TestAnalyzePodSchedulability_FetchNodesError(t *testing.T) {
 	mockFetcher := &MockFetcher{}
-	
+
 	pods := []types.PodInfo{
 		{
 			Name:           "test-pod",
@@ -103,20 +103,20 @@ func TestAnalyzePodSchedulability_FetchNodesError(t *testing.T) {
 			RequestsMemory: resource.MustParse("128Mi"),
 		},
 	}
-	
+
 	expectedError := errors.New("failed to fetch nodes")
 	mockFetcher.On("FetchPendingPods", mock.Anything, "default").Return(pods, nil)
 	mockFetcher.On("FetchNodes", mock.Anything).Return([]types.NodeInfo(nil), expectedError)
-	
+
 	analyzer := NewAnalyzer(mockFetcher)
 	ctx := context.Background()
-	
+
 	results, err := analyzer.AnalyzePodSchedulability(ctx, "default", false)
-	
+
 	assert.Error(t, err)
 	assert.Nil(t, results)
 	assert.Contains(t, err.Error(), "failed to fetch nodes")
-	
+
 	mockFetcher.AssertExpectations(t)
 }
 
@@ -349,13 +349,13 @@ func TestAnalyzeSinglePod(t *testing.T) {
 			},
 		},
 	}
-	
+
 	analyzer := &Analyzer{}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := analyzer.analyzeSinglePod(tt.pod, tt.nodes, tt.includeLimits)
-			
+
 			assert.Equal(t, tt.expectedResult.Pod.Name, result.Pod.Name)
 			assert.Equal(t, tt.expectedResult.Pod.Namespace, result.Pod.Namespace)
 			assert.Equal(t, tt.expectedResult.IsSchedulable, result.IsSchedulable)
@@ -369,10 +369,10 @@ func TestAnalyzeSinglePod(t *testing.T) {
 
 func TestFindMaxAvailableResources(t *testing.T) {
 	tests := []struct {
-		name               string
-		nodes              []types.NodeInfo
-		expectedMaxCPU     resource.Quantity
-		expectedMaxMemory  resource.Quantity
+		name              string
+		nodes             []types.NodeInfo
+		expectedMaxCPU    resource.Quantity
+		expectedMaxMemory resource.Quantity
 	}{
 		{
 			name: "single node",
@@ -432,13 +432,13 @@ func TestFindMaxAvailableResources(t *testing.T) {
 			expectedMaxMemory: resource.MustParse("1Gi"),
 		},
 	}
-	
+
 	analyzer := &Analyzer{}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			maxCPU, maxMemory := analyzer.findMaxAvailableResources(tt.nodes)
-			
+
 			assert.True(t, tt.expectedMaxCPU.Equal(maxCPU), "Expected CPU %s, got %s", tt.expectedMaxCPU.String(), maxCPU.String())
 			assert.True(t, tt.expectedMaxMemory.Equal(maxMemory), "Expected Memory %s, got %s", tt.expectedMaxMemory.String(), maxMemory.String())
 		})
@@ -448,8 +448,8 @@ func TestFindMaxAvailableResources(t *testing.T) {
 func TestEvaluateResourceConstraints(t *testing.T) {
 	analyzer := &Analyzer{}
 	ctx := context.Background()
-	
+
 	err := analyzer.EvaluateResourceConstraints(ctx)
-	
+
 	assert.NoError(t, err)
 }
