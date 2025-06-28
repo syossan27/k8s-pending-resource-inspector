@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/sirupsen/logrus"
 	"github.com/syossan27/k8s-pending-resource-inspector/pkg/types"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -45,21 +46,33 @@ func NewFetcherFromConfig() (*Fetcher, error) {
 	var config *rest.Config
 	var err error
 
+	logrus.Debug("Attempting to create Kubernetes configuration")
+
 	config, err = rest.InClusterConfig()
 	if err != nil {
-		inClusterErr := err // Preserve the error from InClusterConfig
+		logrus.Debug("In-cluster config failed, trying kubeconfig file")
+		inClusterErr := err
 		config, err = clientcmd.BuildConfigFromFlags("", clientcmd.RecommendedHomeFile)
 		if err != nil {
+			logrus.WithFields(logrus.Fields{
+				"in_cluster_error": inClusterErr.Error(),
+				"kubeconfig_error": err.Error(),
+			}).Error("Failed to create Kubernetes configuration")
 			return nil, fmt.Errorf("failed to create kubernetes config: in-cluster error: %v, fallback error: %w",
 				inClusterErr, err)
 		}
+		logrus.Debug("Successfully loaded kubeconfig file")
+	} else {
+		logrus.Debug("Successfully loaded in-cluster configuration")
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
+		logrus.WithError(err).Error("Failed to create Kubernetes clientset")
 		return nil, fmt.Errorf("failed to create kubernetes clientset: %w", err)
 	}
 
+	logrus.Debug("Successfully created Kubernetes clientset")
 	return NewFetcher(clientset), nil
 }
 
@@ -74,10 +87,15 @@ func NewFetcherFromConfig() (*Fetcher, error) {
 //   - []types.NodeInfo: A slice of NodeInfo containing node details
 //   - error: An error if the node listing operation fails
 func (f *Fetcher) FetchNodes(ctx context.Context) ([]types.NodeInfo, error) {
+	logrus.Debug("Fetching cluster nodes")
+
 	nodes, err := f.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
+		logrus.WithError(err).Error("Failed to list nodes from Kubernetes API")
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
+
+	logrus.WithField("nodes_count", len(nodes.Items)).Info("Successfully fetched cluster nodes")
 
 	nodeInfos := make([]types.NodeInfo, 0, len(nodes.Items))
 	for _, node := range nodes.Items {
@@ -88,6 +106,14 @@ func (f *Fetcher) FetchNodes(ctx context.Context) ([]types.NodeInfo, error) {
 			Taints:            node.Spec.Taints,
 			Labels:            node.Labels,
 		}
+
+		logrus.WithFields(logrus.Fields{
+			"node_name":          node.Name,
+			"allocatable_cpu":    nodeInfo.AllocatableCPU.String(),
+			"allocatable_memory": nodeInfo.AllocatableMemory.String(),
+			"taints_count":       len(node.Spec.Taints),
+		}).Debug("Processed node information")
+
 		nodeInfos = append(nodeInfos, nodeInfo)
 	}
 
@@ -113,18 +139,37 @@ func (f *Fetcher) FetchPendingPods(ctx context.Context, namespace string) ([]typ
 	var err error
 
 	if namespace == "" {
+		logrus.Debug("Fetching pending pods cluster-wide")
 		pods, err = f.clientset.CoreV1().Pods("").List(ctx, listOptions)
 	} else {
+		logrus.WithField("namespace", namespace).Debug("Fetching pending pods from specific namespace")
 		pods, err = f.clientset.CoreV1().Pods(namespace).List(ctx, listOptions)
 	}
 
 	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"namespace": namespace,
+			"error":     err.Error(),
+		}).Error("Failed to list pending pods from Kubernetes API")
 		return nil, fmt.Errorf("failed to list pending pods: %w", err)
 	}
+
+	logrus.WithFields(logrus.Fields{
+		"namespace":          namespace,
+		"pending_pods_count": len(pods.Items),
+	}).Info("Successfully fetched pending pods")
 
 	podInfos := make([]types.PodInfo, 0, len(pods.Items))
 	for _, pod := range pods.Items {
 		podInfo := f.parsePodResources(pod)
+
+		logrus.WithFields(logrus.Fields{
+			"pod_name":        pod.Name,
+			"pod_namespace":   pod.Namespace,
+			"requests_cpu":    podInfo.RequestsCPU.String(),
+			"requests_memory": podInfo.RequestsMemory.String(),
+		}).Debug("Processed pending pod information")
+
 		podInfos = append(podInfos, podInfo)
 	}
 

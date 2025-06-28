@@ -90,7 +90,7 @@ func TestEmptyResults(t *testing.T) {
 func TestNewReporter(t *testing.T) {
 	var buf bytes.Buffer
 	reporter := NewReporter(&buf, OutputFormatJSON)
-	
+
 	assert.NotNil(t, reporter)
 	assert.Equal(t, &buf, reporter.writer)
 	assert.Equal(t, OutputFormatJSON, reporter.format)

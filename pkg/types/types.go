@@ -7,6 +7,21 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
+type LogLevel string
+
+const (
+	LogLevelDebug LogLevel = "debug"
+	LogLevelInfo  LogLevel = "info"
+	LogLevelWarn  LogLevel = "warn"
+	LogLevelError LogLevel = "error"
+)
+
+type LogFormat string
+
+const (
+	LogFormatJSON LogFormat = "json"
+	LogFormatText LogFormat = "text"
+)
 
 type NodeInfo struct {
 	Name              string            `json:"name" yaml:"name"`
@@ -16,18 +31,16 @@ type NodeInfo struct {
 	Labels            map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 }
 
-
 type PodInfo struct {
-	Name           string                `json:"name" yaml:"name"`
-	Namespace      string                `json:"namespace" yaml:"namespace"`
-	RequestsCPU    resource.Quantity     `json:"requestsCpu" yaml:"requestsCpu"`
-	RequestsMemory resource.Quantity     `json:"requestsMemory" yaml:"requestsMemory"`
-	LimitsCPU      resource.Quantity     `json:"limitsCpu,omitempty" yaml:"limitsCpu,omitempty"`
-	LimitsMemory   resource.Quantity     `json:"limitsMemory,omitempty" yaml:"limitsMemory,omitempty"`
-	NodeAffinity   *corev1.NodeAffinity  `json:"nodeAffinity,omitempty" yaml:"nodeAffinity,omitempty"`
-	Tolerations    []corev1.Toleration   `json:"tolerations,omitempty" yaml:"tolerations,omitempty"`
+	Name           string               `json:"name" yaml:"name"`
+	Namespace      string               `json:"namespace" yaml:"namespace"`
+	RequestsCPU    resource.Quantity    `json:"requestsCpu" yaml:"requestsCpu"`
+	RequestsMemory resource.Quantity    `json:"requestsMemory" yaml:"requestsMemory"`
+	LimitsCPU      resource.Quantity    `json:"limitsCpu,omitempty" yaml:"limitsCpu,omitempty"`
+	LimitsMemory   resource.Quantity    `json:"limitsMemory,omitempty" yaml:"limitsMemory,omitempty"`
+	NodeAffinity   *corev1.NodeAffinity `json:"nodeAffinity,omitempty" yaml:"nodeAffinity,omitempty"`
+	Tolerations    []corev1.Toleration  `json:"tolerations,omitempty" yaml:"tolerations,omitempty"`
 }
-
 
 type AnalysisResult struct {
 	Pod                PodInfo           `json:"pod" yaml:"pod"`
@@ -37,7 +50,6 @@ type AnalysisResult struct {
 	MaxAvailableCPU    resource.Quantity `json:"maxAvailableCpu" yaml:"maxAvailableCpu"`
 	MaxAvailableMemory resource.Quantity `json:"maxAvailableMemory" yaml:"maxAvailableMemory"`
 }
-
 
 type ClusterAnalysis struct {
 	Timestamp         time.Time        `json:"timestamp" yaml:"timestamp"`

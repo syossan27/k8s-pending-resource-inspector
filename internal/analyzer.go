@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/sirupsen/logrus"
 	"github.com/syossan27/k8s-pending-resource-inspector/pkg/types"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -48,21 +49,55 @@ func NewAnalyzer(fetcher FetcherInterface) *Analyzer {
 //   - []types.AnalysisResult: Analysis results for each pending pod, including schedulability status and suggestions
 //   - error: An error if fetching pods or nodes fails
 func (a *Analyzer) AnalyzePodSchedulability(ctx context.Context, namespace string, includeLimits bool) ([]types.AnalysisResult, error) {
+	logrus.WithFields(logrus.Fields{
+		"namespace":      namespace,
+		"include_limits": includeLimits,
+	}).Info("Starting pod schedulability analysis")
+
 	pods, err := a.fetcher.FetchPendingPods(ctx, namespace)
 	if err != nil {
+		logrus.WithError(err).Error("Failed to fetch pending pods for analysis")
 		return nil, fmt.Errorf("failed to fetch pending pods: %w", err)
 	}
 
 	nodes, err := a.fetcher.FetchNodes(ctx)
 	if err != nil {
+		logrus.WithError(err).Error("Failed to fetch nodes for analysis")
 		return nil, fmt.Errorf("failed to fetch nodes: %w", err)
 	}
 
+	logrus.WithFields(logrus.Fields{
+		"pods_count":  len(pods),
+		"nodes_count": len(nodes),
+	}).Info("Starting individual pod analysis")
+
 	results := make([]types.AnalysisResult, 0, len(pods))
+	unschedulableCount := 0
+
 	for _, pod := range pods {
 		result := a.analyzeSinglePod(pod, nodes, includeLimits)
 		results = append(results, result)
+
+		if !result.IsSchedulable {
+			unschedulableCount++
+			logrus.WithFields(logrus.Fields{
+				"pod_name":      pod.Name,
+				"pod_namespace": pod.Namespace,
+				"reason":        result.Reason,
+			}).Warn("Pod is unschedulable due to resource constraints")
+		} else {
+			logrus.WithFields(logrus.Fields{
+				"pod_name":      pod.Name,
+				"pod_namespace": pod.Namespace,
+			}).Debug("Pod is schedulable")
+		}
 	}
+
+	logrus.WithFields(logrus.Fields{
+		"total_pods":         len(results),
+		"unschedulable_pods": unschedulableCount,
+		"schedulable_pods":   len(results) - unschedulableCount,
+	}).Info("Pod schedulability analysis completed")
 
 	return results, nil
 }
@@ -153,6 +188,11 @@ func (a *Analyzer) findMaxAvailableResources(nodes []types.NodeInfo) (resource.Q
 			maxMemory = node.AllocatableMemory.DeepCopy()
 		}
 	}
+
+	logrus.WithFields(logrus.Fields{
+		"max_cpu":    maxCPU.String(),
+		"max_memory": maxMemory.String(),
+	}).Debug("Calculated maximum available resources across all nodes")
 
 	return maxCPU, maxMemory
 }
