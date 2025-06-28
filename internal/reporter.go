@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/syossan27/k8s-pending-resource-inspector/pkg/types"
+	"github.com/syossan27/k8s-pending-resource-inspector/pkg/utils"
 	"gopkg.in/yaml.v3"
 )
 
@@ -27,15 +27,7 @@ const (
 	OutputFormatYAML OutputFormat = "yaml"
 )
 
-func redactWebhookURL(webhookURL string) string {
-	if webhookURL == "" {
-		return ""
-	}
-	if lastSlash := strings.LastIndex(webhookURL, "/"); lastSlash != -1 && lastSlash < len(webhookURL)-1 {
-		return webhookURL[:lastSlash+1] + "***"
-	}
-	return "***"
-}
+
 
 // Reporter handles the generation and delivery of analysis reports in various formats.
 // It can output results to different destinations and formats, and supports
@@ -147,7 +139,7 @@ func (r *Reporter) SendSlackNotification(ctx context.Context, webhookURL string,
 	}
 
 	logrus.WithFields(logrus.Fields{
-		"webhook_url":        redactWebhookURL(webhookURL),
+		"webhook_url":        utils.RedactWebhookURL(webhookURL),
 		"total_results":      len(results),
 		"unschedulable_pods": unschedulableCount,
 	}).Info("Sending Slack notification")
