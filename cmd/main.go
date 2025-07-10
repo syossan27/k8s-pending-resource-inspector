@@ -11,10 +11,11 @@ import (
 )
 
 var (
-	namespace     string
-	includeLimits bool
-	outputFormat  string
-	alertSlack    string
+	namespace        string
+	includeLimits    bool
+	outputFormat     string
+	alertSlack       string
+	prometheusGateway string
 )
 
 var rootCmd = &cobra.Command{
@@ -32,7 +33,10 @@ Examples:
   k8s-pending-resource-inspector --namespace my-app --output json
 
   # Include limits and send Slack notification
-  k8s-pending-resource-inspector --include-limits --alert-slack https://hooks.slack.com/services/XXX`,
+  k8s-pending-resource-inspector --include-limits --alert-slack https://hooks.slack.com/services/XXX
+
+  # Send metrics to Prometheus Push Gateway
+  k8s-pending-resource-inspector --prometheus-gateway http://localhost:9091`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runAnalysis()
 	},
@@ -43,6 +47,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&includeLimits, "include-limits", false, "Use resource limits instead of requests for analysis")
 	rootCmd.Flags().StringVarP(&outputFormat, "output", "o", "human", "Output format: human, json, yaml")
 	rootCmd.Flags().StringVar(&alertSlack, "alert-slack", "", "Slack webhook URL for notifications (optional)")
+	rootCmd.Flags().StringVar(&prometheusGateway, "prometheus-gateway", "", "Prometheus Push Gateway URL for metrics (optional)")
 }
 
 func validateFlags() error {
@@ -107,6 +112,12 @@ func runAnalysis() error {
 	if alertSlack != "" {
 		if err := reporter.SendSlackNotification(ctx, alertSlack, results); err != nil {
 			return fmt.Errorf("failed to send Slack notification: %w", err)
+		}
+	}
+	
+	if prometheusGateway != "" {
+		if err := reporter.SendPrometheusMetrics(ctx, prometheusGateway, results, clusterName); err != nil {
+			return fmt.Errorf("failed to send Prometheus metrics: %w", err)
 		}
 	}
 

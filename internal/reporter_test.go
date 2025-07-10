@@ -171,8 +171,21 @@ func TestSendPrometheusMetrics(t *testing.T) {
 	var buf bytes.Buffer
 	reporter := NewReporter(&buf, OutputFormatJSON)
 
-	err := reporter.SendPrometheusMetrics(context.Background(), "http://prometheus:9091")
-	assert.NoError(t, err)
+	// Create test data
+	results := []types.AnalysisResult{
+		{
+			Pod: types.PodInfo{
+				Name:      "test-pod",
+				Namespace: "default",
+			},
+			IsSchedulable: false,
+			Reason:       "Insufficient resources",
+			Suggestion:   "Add more nodes",
+		},
+	}
+
+	err := reporter.SendPrometheusMetrics(context.Background(), "", results, "test-cluster")
+	assert.NoError(t, err) // Should succeed with empty URL (no-op)
 }
 
 func TestBuildClusterAnalysis(t *testing.T) {

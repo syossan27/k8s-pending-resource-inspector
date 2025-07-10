@@ -1,10 +1,13 @@
 package internal
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/syossan27/k8s-pending-resource-inspector/pkg/types"
@@ -101,10 +104,117 @@ func (r *Reporter) generateYAMLReport(results []types.AnalysisResult, clusterNam
 	return err
 }
 
+// SlackMessage represents the structure of a Slack webhook message
+type SlackMessage struct {
+	Text        string              `json:"text"`
+	Attachments []SlackAttachment   `json:"attachments,omitempty"`
+}
+
+// SlackAttachment represents a Slack message attachment
+type SlackAttachment struct {
+	Color    string       `json:"color"`
+	Title    string       `json:"title"`
+	Text     string       `json:"text"`
+	Fields   []SlackField `json:"fields,omitempty"`
+}
+
+// SlackField represents a field within a Slack attachment
+type SlackField struct {
+	Title string `json:"title"`
+	Value string `json:"value"`
+	Short bool   `json:"short"`
+}
+
 // SendSlackNotification sends analysis results as a notification to a Slack channel.
 func (r *Reporter) SendSlackNotification(ctx context.Context, webhookURL string, results []types.AnalysisResult) error {
-	fmt.Printf("Slack notification would be sent to: %s with %d results\n", webhookURL, len(results))
+	if len(results) == 0 {
+		return nil
+	}
+
+	unschedulablePods := make([]types.AnalysisResult, 0)
+	for _, result := range results {
+		if !result.IsSchedulable {
+			unschedulablePods = append(unschedulablePods, result)
+		}
+	}
+
+	message := r.buildSlackMessage(results, unschedulablePods)
+
+	payload, err := json.Marshal(message)
+	if err != nil {
+		return fmt.Errorf("failed to marshal Slack message: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", webhookURL, bytes.NewBuffer(payload))
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send Slack notification: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("Slack API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
 	return nil
+}
+
+// buildSlackMessage creates a Slack message from analysis results
+func (r *Reporter) buildSlackMessage(results []types.AnalysisResult, unschedulablePods []types.AnalysisResult) SlackMessage {
+	totalPods := len(results)
+	unschedulableCount := len(unschedulablePods)
+	
+	var color string
+	var title string
+	
+	if unschedulableCount == 0 {
+		color = "good"
+		title = fmt.Sprintf("✅ All %d pending pods are schedulable", totalPods)
+	} else {
+		color = "danger"
+		title = fmt.Sprintf("⚠️ %d of %d pending pods are unschedulable", unschedulableCount, totalPods)
+	}
+
+	attachment := SlackAttachment{
+		Color: color,
+		Title: title,
+	}
+
+	if unschedulableCount > 0 {
+		fields := make([]SlackField, 0)
+		
+		for i, pod := range unschedulablePods {
+			if i >= 5 { // Limit to first 5 pods to avoid message length issues
+				fields = append(fields, SlackField{
+					Title: "Additional Issues",
+					Value: fmt.Sprintf("... and %d more unschedulable pods", unschedulableCount-5),
+					Short: false,
+				})
+				break
+			}
+			
+			fields = append(fields, SlackField{
+				Title: fmt.Sprintf("Pod: %s", pod.Pod.Name),
+				Value: fmt.Sprintf("Reason: %s\nSuggestion: %s", pod.Reason, pod.Suggestion),
+				Short: false,
+			})
+		}
+		
+		attachment.Fields = fields
+	}
+
+	return SlackMessage{
+		Text:        "Kubernetes Pending Pod Analysis Report",
+		Attachments: []SlackAttachment{attachment},
+	}
 }
 
 func (r *Reporter) buildClusterAnalysis(results []types.AnalysisResult, clusterName string, totalNodes int) types.ClusterAnalysis {
@@ -129,15 +239,93 @@ func (r *Reporter) buildClusterAnalysis(results []types.AnalysisResult, clusterN
 }
 
 // SendPrometheusMetrics sends analysis results as metrics to a Prometheus Push Gateway.
-// This method is currently a placeholder for future implementation of Prometheus integration
-// that will convert pod schedulability analysis into metrics and push them for monitoring.
+// This method converts pod schedulability analysis into metrics and pushes them for monitoring.
 //
 // Parameters:
 //   - ctx: Context for the operation, used for cancellation and timeout
 //   - pushGatewayURL: The Prometheus Push Gateway URL to send metrics to
+//   - results: Analysis results to convert to metrics
+//   - clusterName: Name of the cluster for metric labeling
 //
 // Returns:
-//   - error: Currently always returns nil (not implemented)
-func (r *Reporter) SendPrometheusMetrics(ctx context.Context, pushGatewayURL string) error {
+//   - error: Error if metrics push fails
+func (r *Reporter) SendPrometheusMetrics(ctx context.Context, pushGatewayURL string, results []types.AnalysisResult, clusterName string) error {
+	if pushGatewayURL == "" {
+		return nil
+	}
+
+	metrics := r.buildPrometheusMetrics(results, clusterName)
+	
+	req, err := http.NewRequestWithContext(ctx, "POST", pushGatewayURL+"/metrics/job/k8s-pending-resource-inspector", bytes.NewBufferString(metrics))
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "text/plain")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to push metrics to Prometheus: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("Prometheus Push Gateway returned status %d: %s", resp.StatusCode, string(body))
+	}
+
 	return nil
+}
+
+// buildPrometheusMetrics converts analysis results into Prometheus metrics format
+func (r *Reporter) buildPrometheusMetrics(results []types.AnalysisResult, clusterName string) string {
+	var metrics strings.Builder
+	
+	totalPods := len(results)
+	unschedulablePods := 0
+	schedulablePods := 0
+	
+	for _, result := range results {
+		if result.IsSchedulable {
+			schedulablePods++
+		} else {
+			unschedulablePods++
+		}
+	}
+	
+	timestamp := time.Now().Unix()
+	
+	// Total pending pods metric
+	metrics.WriteString(fmt.Sprintf("# HELP k8s_pending_pods_total Total number of pending pods analyzed\n"))
+	metrics.WriteString(fmt.Sprintf("# TYPE k8s_pending_pods_total gauge\n"))
+	metrics.WriteString(fmt.Sprintf("k8s_pending_pods_total{cluster=\"%s\"} %d %d\n", clusterName, totalPods, timestamp))
+	
+	// Schedulable pods metric
+	metrics.WriteString(fmt.Sprintf("# HELP k8s_pending_pods_schedulable Number of pending pods that are schedulable\n"))
+	metrics.WriteString(fmt.Sprintf("# TYPE k8s_pending_pods_schedulable gauge\n"))
+	metrics.WriteString(fmt.Sprintf("k8s_pending_pods_schedulable{cluster=\"%s\"} %d %d\n", clusterName, schedulablePods, timestamp))
+	
+	// Unschedulable pods metric
+	metrics.WriteString(fmt.Sprintf("# HELP k8s_pending_pods_unschedulable Number of pending pods that are unschedulable due to resource constraints\n"))
+	metrics.WriteString(fmt.Sprintf("# TYPE k8s_pending_pods_unschedulable gauge\n"))
+	metrics.WriteString(fmt.Sprintf("k8s_pending_pods_unschedulable{cluster=\"%s\"} %d %d\n", clusterName, unschedulablePods, timestamp))
+	
+	// Per-pod metrics
+	for _, result := range results {
+		schedulableStatus := 0
+		if result.IsSchedulable {
+			schedulableStatus = 1
+		}
+		
+		podName := result.Pod.Name
+		namespace := result.Pod.Namespace
+		
+		metrics.WriteString(fmt.Sprintf("# HELP k8s_pod_schedulable Whether a specific pod is schedulable (1) or not (0)\n"))
+		metrics.WriteString(fmt.Sprintf("# TYPE k8s_pod_schedulable gauge\n"))
+		metrics.WriteString(fmt.Sprintf("k8s_pod_schedulable{cluster=\"%s\",pod=\"%s\",namespace=\"%s\"} %d %d\n", 
+			clusterName, podName, namespace, schedulableStatus, timestamp))
+	}
+	
+	return metrics.String()
 }
